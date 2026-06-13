@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: wxt-postgres
+    environment:
+      POSTGRES_USER: wxt_user
+      POSTGRES_PASSWORD: wxt_password
+      POSTGRES_DB: wxt_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - wxt-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wxt_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend-node:
+    build:
+      context: ./backend-node
+      dockerfile: Dockerfile
+    container_name: wxt-node-api
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: wxt_user
+      DB_PASSWORD: wxt_password
+      DB_NAME: wxt_db
+      JWT_SECRET: super_secret_jwt_key_wxt_2024
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wxt-network
+
+  backend-java:
+    build:
+      context: ./backend-java
+      dockerfile: Dockerfile
+    container_name: wxt-java-api
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/wxt_db
+      SPRING_DATASOURCE_USERNAME: wxt_user
+      SPRING_DATASOURCE_PASSWORD: wxt_password
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wxt-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wxt-react-app
+    environment:
+      REACT_APP_API_URL: http://localhost:5000
+      REACT_APP_JAVA_API_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend-node
+    networks:
+      - wxt-network
+
+volumes:
+  postgres_data:
+
+networks:
+  wxt-network:
+    driver: bridge
